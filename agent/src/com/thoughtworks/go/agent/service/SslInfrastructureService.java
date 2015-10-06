@@ -73,27 +73,23 @@ public class SslInfrastructureService {
         this.httpConnectionManagerParams = httpConnectionManagerParams;
         this.keyStoreManager = new KeyStoreManager();
         this.keyStoreManager.preload(AGENT_CERTIFICATE_FILE, AGENT_STORE_PASSWORD);
+        registered = false;
     }
 
     public void createSslInfrastructure() throws IOException {
         File parentFile = AGENT_TRUST_FILE.getParentFile();
         if (parentFile.exists() || parentFile.mkdirs()) {
-            protocolSocketFactory = new AuthSSLProtocolSocketFactory(
-                    AGENT_TRUST_FILE, AGENT_CERTIFICATE_FILE, AGENT_STORE_PASSWORD);
-            protocolSocketFactory.registerAsHttpsProtocol();
         } else {
             bomb("Unable to create folder " + parentFile.getAbsolutePath());
         }
     }
 
     public void registerIfNecessary() throws Exception {
-        registered = keyStoreManager.hasCertificates(CHAIN_ALIAS, AGENT_CERTIFICATE_FILE,
-                AGENT_STORE_PASSWORD) && GuidService.guidPresent();
         if (!registered) {
+            protocolSocketFactory = new AuthSSLProtocolSocketFactory(AGENT_TRUST_FILE, AGENT_CERTIFICATE_FILE, AGENT_STORE_PASSWORD);
+            protocolSocketFactory.registerAsHttpsProtocol();            
             LOGGER.info("[Agent Registration] Starting to register agent");
             register();
-            createSslInfrastructure();
-            registered = true;
             LOGGER.info("[Agent Registration] Successfully registered agent");
         }
     }
@@ -127,15 +123,17 @@ public class SslInfrastructureService {
                     }
                 }
             }
-
+            if (keyEntry != null) {
+                LOGGER.info("[Agent Registration] Retrieved registration from Go server.");
+                registered = true;
+                break;
+            }
             try {
                 Thread.sleep(REGISTER_RETRY_INTERVAL);
             } catch (InterruptedException e) {
                 // Ok
             }
         }
-        LOGGER.info("[Agent Registration] Retrieved registration from Go server.");
-        storeChainIntoAgentStore(keyEntry);
     }
 
     void storeChainIntoAgentStore(Registration keyEntry) {
@@ -149,14 +147,8 @@ public class SslInfrastructureService {
     }
 
     public void invalidateAgentCertificate() {
-        resetHttpConnectionManager();
-        try {
-            keyStoreManager.deleteEntry(CHAIN_ALIAS, AGENT_CERTIFICATE_FILE, AGENT_STORE_PASSWORD);
-            keyStoreManager.deleteEntry(CRUISE_SERVER, AGENT_TRUST_FILE, AGENT_STORE_PASSWORD);
-        } catch (Exception e) {
-            LOGGER.fatal("[Agent Registration] Error while deleting key from key store", e);
-            deleteKeyStores();
-        }
+        LOGGER.warn("Disabled invalidating certificates");
+        return;
     }
 
     private void resetHttpConnectionManager() {
